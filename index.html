@@ -22,7 +22,9 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--tx);font-family:
 .tool{width:46px;height:46px;border-radius:10px;border:1px solid transparent;background:none;color:var(--tx);font-size:18px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center}
 .tool span{font-size:9px;opacity:.7}.tool:hover{background:#ffffff10}
 .tool.on{background:#f4d35e24;border-color:var(--ac);color:var(--ac)}
-#wrap{flex:1;display:flex;align-items:center;justify-content:center;background:#05080c;padding:12px;min-width:0}
+#wrap{flex:1;display:block;overflow:auto;background:#05080c;padding:12px;min-width:0}
+#grip{position:absolute;right:0;bottom:0;width:28px;height:28px;cursor:nwse-resize;z-index:99999;background:linear-gradient(135deg,transparent 50%,#f4d35e 50%);touch-action:none}
+#side select,#side input[type=number]{background:var(--bg);border:1px solid var(--bd);color:var(--tx);border-radius:8px;padding:6px;font-size:12px;width:100%}
 #stage{position:relative;box-shadow:0 20px 60px #000a;border-radius:6px;overflow:hidden;flex-shrink:0}
 #board{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
 #side{width:200px;background:var(--p);border-left:1px solid var(--bd);padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:14px}
@@ -54,27 +56,28 @@ input[type=range]{width:100%;accent-color:var(--ac)}
  <div class="brand"><span class="dot"></span>Teach Board</div>
  <button class="btn" id="prev">◀</button><span id="plabel" style="font-size:13px;min-width:56px;text-align:center">1 / 1</span><button class="btn" id="next">▶</button>
  <button class="btn" id="addp">➕ Board</button>
- <div class="vid"><input id="vurl" placeholder="▶ Paste a YouTube link — it plays right here"><button class="btn pri" id="vbtn">Play</button></div>
+ 
  <button class="btn" id="imgb">🖼️ Image</button><input type="file" id="imgf" accept="image/*" hidden>
  <button class="btn" id="undo">↩</button><button class="btn" id="redo">↪</button><button class="btn" id="clr">🧹 Clear</button>
  <button class="btn pri" id="exp">⬇ PDF</button>
 </div>
 <div id="body">
  <div id="tools"></div>
- <div id="wrap"><div id="stage"><canvas id="board"></canvas><div id="laser"></div></div></div>
+ <div id="wrap"><div id="stage"><canvas id="board"></canvas><div id="laser"></div><div id="grip" title="Drag to resize the board"></div></div></div>
  <div id="side">
   <div><h4>Eraser size</h4><div class="er" id="er"></div></div>
   <div><h4>Colour</h4><div class="sw" id="sw"></div><input type="color" id="cc" value="#f5f3ec" style="width:100%;height:28px;margin-top:8px;border:0;background:none"></div>
   <div><h4>Brush size</h4><input type="range" id="sz" min="1" max="30" value="4"></div>
   <div><h4>3D shapes &amp; molecules</h4><div class="shapes" id="shapes"></div></div>
+  <div><h4>Board size</h4><select id="bsz"><option value="">Preset…</option><option value="1600x900">16:9 · 1600×900</option><option value="1200x900">4:3 · 1200×900</option><option value="1000x1000">1:1 · 1000×1000</option><option value="900x1600">9:16 · 900×1600</option><option value="1600x1131">A4 landscape</option><option value="1131x1600">A4 portrait</option><option value="2400x1350">Large 2400×1350</option></select><div style="display:flex;gap:6px;margin-top:6px"><input type="number" id="bw" min="480" max="2400"><input type="number" id="bhh" min="300" max="1600"></div><button class="btn" id="bapply" style="width:100%;margin-top:6px">Apply size</button><div style="font-size:10px;color:#5c6b7a;margin-top:6px">Or drag the yellow ◢ corner of the board.</div></div>
   <div><h4>Board theme</h4><div class="sw" id="th"></div></div>
-  <div style="font-size:11px;color:#5c6b7a;line-height:1.5">Paste a YouTube link or image with Ctrl+V. Hover a 3D model: drag it to rotate freely, or use X / Y / Z (45° steps) and ⟲ to reset; ⟳ toggles spin. Atoms: H white, C grey, O red, N blue, S yellow, Cl green, Na purple.</div>
+  <div style="font-size:11px;color:#5c6b7a;line-height:1.5">Paste an image with Ctrl+V. Hover an image or 3D model to move, resize or close it. For 3D: drag it to rotate freely, or use X / Y / Z (45° steps) and ⟲ to reset; ⟳ toggles spin. Atoms: H white, C grey, O red, N blue, S yellow, Cl green, Na purple.</div>
  </div>
 </div></div>
 <div id="ov">Exporting PDF…</div>
 <script>
 (function(){
-const W=1600,H=900,S=1.5,$=id=>document.getElementById(id);
+let W=1600,H=900;const S=1.5,$=id=>document.getElementById(id);
 const cv=$('board'),ctx=cv.getContext('2d'),stage=$('stage'),wrap=$('wrap');
 cv.width=W*S;cv.height=H*S;ctx.setTransform(S,0,0,S,0,0);
 const base=document.createElement('canvas');base.width=W*S;base.height=H*S;
@@ -87,8 +90,8 @@ const mk=bg=>({strokes:[],undone:[],bg:bg||THEMES[0],widgets:[]});
 const pages=[mk()];const page=()=>pages[cp];
 const lum=h=>(.299*parseInt(h.substr(1,2),16)+.587*parseInt(h.substr(3,2),16)+.114*parseInt(h.substr(5,2),16))/255;
 
-function fit(){const w=Math.min(wrap.clientWidth-24,(wrap.clientHeight-24)*16/9);stage.style.width=w+'px';stage.style.height=w*9/16+'px';}
-addEventListener('resize',fit);
+let K=1;function fit(k){K=k||Math.min((wrap.clientWidth-24)/W,(wrap.clientHeight-24)/H);stage.style.width=W*K+'px';stage.style.height=H*K+'px'}
+addEventListener('resize',()=>fit());
 
 /* ---------- drawing (smooth quadratic curves) ---------- */
 function trace(c,p){c.beginPath();c.moveTo(p[0].x,p[0].y);
@@ -149,11 +152,6 @@ function widget(type,title,x,y,w,h,body,extra){
  drag(rz,(dx,dy,s)=>{o.w=Math.max(8,s.w+dx);o.h=Math.max(8,s.h+dy)});
  cl.onclick=()=>{el.remove();const p=page(),i=p.widgets.indexOf(o);if(i>-1)p.widgets.splice(i,1);if(o.dispose)o.dispose()};
  return o}
-function ytId(u){const m=u.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/))([\w-]{11})/);return m&&m[1]}
-function addVideo(id){const f=document.createElement('iframe');
- f.src='https://www.youtube-nocookie.com/embed/'+id+'?autoplay=1&rel=0&playsinline=1';
- f.allow='autoplay; encrypted-media; picture-in-picture; fullscreen';f.allowFullscreen=true;
- widget('yt','▶ YouTube',22,12,56,56,f)}
 function addImage(src){const i=new Image();i.onload=()=>{const a=i.naturalWidth/i.naturalHeight*9/16,w=Math.min(40,60*a),h=w/a;
  const o=widget('im','Image',30,15,w,h,i);o.img=i};i.src=src}
 const SH_OLD={
@@ -257,31 +255,37 @@ $('cc').oninput=e=>{color=e.target.value;document.querySelectorAll('#sw .s').for
 $('sz').oninput=e=>size=+e.target.value;
 THEMES.forEach(c=>{const d=document.createElement('div');d.className='s';d.dataset.c=c;d.style.background=c;d.onclick=()=>{page().bg=c;setPage(cp)};$('th').appendChild(d)});
 Object.keys(SH).forEach(k=>{const b=document.createElement('button');b.innerHTML='<b>'+SH[k][0]+'</b>'+SH[k][1];b.onclick=()=>add3d(k);$('shapes').appendChild(b)});
-function playUrl(u){const id=ytId(u.trim());if(!id){alert('Please paste a valid YouTube link.');return false}addVideo(id);return true}
-$('vbtn').onclick=()=>{if(playUrl($('vurl').value))$('vurl').value=''};
-$('vurl').onkeydown=e=>{if(e.key==='Enter')$('vbtn').click()};
-$('vurl').onpaste=e=>{const t=(e.clipboardData||window.clipboardData).getData('text');if(ytId(t)){e.preventDefault();$('vurl').value='';playUrl(t)}};
 $('imgb').onclick=()=>$('imgf').click();
 const readImg=f=>{const r=new FileReader();r.onload=e=>addImage(e.target.result);r.readAsDataURL(f)};
 $('imgf').onchange=e=>{if(e.target.files[0])readImg(e.target.files[0]);e.target.value=''};
 document.addEventListener('paste',e=>{if(e.target.tagName==='INPUT')return;const cd=e.clipboardData;if(!cd)return;
  for(const it of cd.items)if(it.type.startsWith('image')){readImg(it.getAsFile());e.preventDefault();return}
- const t=cd.getData('text');if(t&&ytId(t)){e.preventDefault();playUrl(t)}});
+ });
 stage.addEventListener('dragover',e=>e.preventDefault());
 stage.addEventListener('drop',e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f&&f.type.startsWith('image/'))readImg(f)});
 
 /* ---------- PDF export (drawings, images, 3D shapes; videos can't be captured) ---------- */
 $('exp').onclick=async()=>{const ov=$('ov'),keep=cp;ov.classList.add('show');
- try{const {jsPDF}=window.jspdf;const pdf=new jsPDF({orientation:'landscape',unit:'pt',format:[W,H]});
+ try{const {jsPDF}=window.jspdf;const pdf=new jsPDF({orientation:W>=H?'landscape':'portrait',unit:'pt',format:[W,H]});
   for(let i=0;i<pages.length;i++){setPage(i);await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
    const o=document.createElement('canvas');o.width=W;o.height=H;const c=o.getContext('2d');c.drawImage(base,0,0,W,H);
    for(const w of pages[i].widgets){const x=w.x/100*W,y=w.y/100*H,ww=w.w/100*W,hh=w.h/100*H;
     if(w.type==='im')c.drawImage(w.img,x,y,ww,hh);else if(w.r3){w.r3();c.drawImage(w.cv,x,y,ww,hh)}}
-   if(i)pdf.addPage([W,H],'landscape');pdf.addImage(o.toDataURL('image/jpeg',.92),'JPEG',0,0,W,H)}
+   if(i)pdf.addPage([W,H],W>=H?'landscape':'portrait');pdf.addImage(o.toDataURL('image/jpeg',.92),'JPEG',0,0,W,H)}
   pdf.save('teach-board-'+new Date().toISOString().slice(0,10)+'.pdf')}
  catch(err){alert('PDF export failed: '+err.message)}
  finally{setPage(keep);ov.classList.remove('show')}};
 
-fit();setPage(0);
+function setBoard(w,h,k){w=Math.max(480,Math.min(2400,Math.round(w)));h=Math.max(300,Math.min(1600,Math.round(h)));const ow=W,oh=H;W=w;H=h;
+ cv.width=W*S;cv.height=H*S;ctx.setTransform(S,0,0,S,0,0);base.width=W*S;base.height=H*S;bx.setTransform(S,0,0,S,0,0);
+ pages.forEach(p=>p.widgets.forEach(o=>{o.x*=ow/W;o.w*=ow/W;o.y*=oh/H;o.h*=oh/H;const s=o.el.style;s.left=o.x+'%';s.top=o.y+'%';s.width=o.w+'%';s.height=o.h+'%'}));
+ $('bw').value=W;$('bhh').value=H;fit(k);rebuild()}
+$('bsz').onchange=e=>{if(e.target.value){const [w,h]=e.target.value.split('x');setBoard(+w,+h)}};
+$('bapply').onclick=()=>setBoard(+$('bw').value||W,+$('bhh').value||H);
+$('grip').addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();const g=$('grip');g.setPointerCapture(e.pointerId);const k=K,sx=e.clientX,sy=e.clientY,w0=W,h0=H;let pend=0,nw,nh;
+ const mv=ev=>{nw=w0+(ev.clientX-sx)/k;nh=h0+(ev.clientY-sy)/k;if(!pend){pend=1;requestAnimationFrame(()=>{pend=0;setBoard(nw,nh,k)})}};
+ const up=()=>{g.removeEventListener('pointermove',mv);g.removeEventListener('pointerup',up);setTimeout(()=>setBoard(W,H),30)};
+ g.addEventListener('pointermove',mv);g.addEventListener('pointerup',up)});
+fit();setPage(0);$('bw').value=W;$('bhh').value=H;
 })();
 </script></body></html>
